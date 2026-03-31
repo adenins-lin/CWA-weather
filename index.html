@@ -159,11 +159,11 @@
 
 <div id="app-container">
     <div id="main-header">
-        <h2 class="header-title">白沙屯 氣象觀測站</h2>
+        <h2 class="header-title">白沙屯 自動氣象站</h2>
         <div id="update-time-text">等待資料載入中...</div>
     </div>
 
-    <div id="loading">📡 連線至中央氣象署中...</div>
+    <div id="loading">📡 正在讀取觀測站資料...</div>
     <div id="error-msg">無法取得資料，請稍後再試。</div>
 
     <div class="dashboard" id="dashboard" style="display: none;">
@@ -171,9 +171,19 @@
 </div>
 
 <script>
-    const apiKey = 'CWA-84A15AC7-F563-4763-B17A-A3DAE6DCFC1A';
-    const stationName = '白沙屯';
-    const url = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0001-001?Authorization=${apiKey}&StationName=${stationName}&format=JSON`;
+    // ------------------------------------------------------------------
+    // 設定資料來源 (Google Drive 檔案 ID)
+    // ------------------------------------------------------------------
+    const fileId = '12R1lPqj7IrjRgDz-NXtW9Uq15ptRzLyN';
+    const driveUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+    
+    // 使用 CORS 代理來解決前端直連 Google Drive 的跨域問題
+    const url = `https://api.allorigins.win/raw?url=${encodeURIComponent(driveUrl)}`;
+    
+    // 未來如果在 Render 上，檔案(baishatun_newly.txt)是放在網頁同目錄下，
+    // 請將上面的 const url 取代為下面這行：
+    // const url = 'baishatun_newly.txt';
+
 
     function buildSVGTempGauge(temp) {
         if (temp === -99 || isNaN(temp)) return '';
@@ -222,7 +232,6 @@
         `;
     }
 
-    // 更新此處：將風速也傳入繪圖函數中
     function buildSVGWind(dir, speed) {
         if (dir === -99 || isNaN(dir)) return '';
         let ticks = '';
@@ -327,36 +336,37 @@
         try {
             const response = await fetch(url);
             if (!response.ok) throw new Error('網路請求失敗');
-            const data = await response.json();
+            
+            // 將檔案內容作為純文字讀取 (CSV 格式)
+            const text = await response.text();
+            const parts = text.split(',');
 
-            if (!data.records || !data.records.Station || data.records.Station.length === 0) {
-                throw new Error('找不到測站資料');
+            if (parts.length < 18) {
+                throw new Error('找不到測站資料或格式錯誤');
             }
-
-            const station = data.records.Station[0];
-            const we = station.WeatherElement;
-            const obsTime = new Date(station.ObsTime.DateTime);
 
             document.getElementById('loading').style.display = 'none';
             const dashboard = document.getElementById('dashboard');
             dashboard.style.display = 'grid';
 
-            document.getElementById('update-time-text').innerText = 
-                `更新時間: ${obsTime.getHours().toString().padStart(2, '0')}:${obsTime.getMinutes().toString().padStart(2, '0')}`;
+            // 解析時間欄位 (例如: 202603311453)
+            const dateStr = parts[3];
+            const hour = dateStr.substring(8, 10);
+            const min = dateStr.substring(10, 12);
+            document.getElementById('update-time-text').innerText = `觀測時間: ${hour}:${min}`;
 
-            const t = parseFloat(we.AirTemperature);
-            const rh = parseFloat(we.RelativeHumidity);
-            const ws = parseFloat(we.WindSpeed);
-            const wd = parseFloat(we.WindDirection);
-            const pres = parseFloat(we.AirPressure);
-            
-            let rain = 0;
-            if (we.Now && we.Now.Precipitation !== undefined) rain = parseFloat(we.Now.Precipitation);
-            else if (we.DailyExtreme && we.DailyExtreme.Precipitation !== undefined) rain = parseFloat(we.DailyExtreme.Precipitation);
-            else if (we.Precipitation !== undefined) rain = parseFloat(we.Precipitation);
+            // 依據檔案格式對應解析資料
+            const pres = parseFloat(parts[4]);   // 氣壓
+            const t = parseFloat(parts[5]);      // 溫度
+            const rh = parseFloat(parts[6]);     // 濕度
+            const ws = parseFloat(parts[9]);     // 風速
+            const wd = parseFloat(parts[10]);    // 風向
+            const rain = parseFloat(parts[16]);  // 降雨量
 
             const appTemp = calculateApparentTemp(t, rh, ws);
             const emojiFace = getFaceEmoji(appTemp);
+            
+            // 計算風向羅盤角度 (保持翻轉 180 度的設計)
             const reversedWindDir = (wd !== -99 && !isNaN(wd)) ? (wd + 180) % 360 : -99;
 
             dashboard.innerHTML = `
