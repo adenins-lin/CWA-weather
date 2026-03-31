@@ -56,7 +56,6 @@
         gap: 10px;
     }
 
-    /* 加入一個會呼吸的 LIVE 小紅點，讓儀表板更有即時感 */
     .live-dot {
         width: 10px;
         height: 10px;
@@ -194,18 +193,14 @@
     // ------------------------------------------------------------------
     // 設定資料來源 (Google Drive 檔案 ID)
     // ------------------------------------------------------------------
+    const fileId = '12R1lPqj7IrjRgDz-NXtW9Uq15ptRzLyN';
+    const driveUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+    
+    // 改用更穩定的 corsproxy.io，並加入時間戳記防快取
     function getFetchUrl() {
         const urlWithTime = `${driveUrl}&t=${new Date().getTime()}`;
         return `https://corsproxy.io/?${encodeURIComponent(urlWithTime)}`;
-    
-    // 使用 CORS 代理來解決前端直連 Google Drive 的跨域問題
-    // 如果加上了快取破壞參數 (Cache Buster)，能確保每 60 秒都抓到最新的檔案
-    function getFetchUrl() {
-        return `https://api.allorigins.win/raw?url=${encodeURIComponent(driveUrl)}&t=${new Date().getTime()}`;
     }
-    
-    // 未來如果在 Render 上，檔案(baishatun_newly.txt)是放在網頁同目錄下，請將上面的函數改為：
-    // function getFetchUrl() { return `baishatun_newly.txt?t=${new Date().getTime()}`; }
 
     function buildSVGTempGauge(temp) {
         if (temp === -99 || isNaN(temp)) return '';
@@ -291,180 +286,4 @@
         return `
         <svg viewBox="0 0 100 100" style="width:100%; height:100%; filter: drop-shadow(0 0 5px rgba(0,0,0,0.3));">
             <ellipse cx="50" cy="25" rx="20" ry="6" fill="none" stroke="#666" stroke-width="2"/>
-            <path d="M 30 25 L 30 75 A 20 6 0 0 0 70 75 L 70 25" fill="none" stroke="#666" stroke-width="2"/>
-            ${h > 0 ? `<path d="M 30 ${75 - h} L 30 75 A 20 6 0 0 0 70 75 L 70 ${75 - h} A 20 6 0 0 1 30 ${75 - h}" fill="#38BDF8" opacity="0.6"/>` : ''}
-        </svg>
-        `;
-    }
-
-    function buildSVGPressure(press) {
-        if (press === -99 || isNaN(press)) return '';
-        const minP = 950; const maxP = 1050;
-        let percent = (press - minP) / (maxP - minP);
-        if (percent < 0) percent = 0; if (percent > 1) percent = 1;
-        const angle = -135 + (percent * 270);
-        let ticks = '';
-        for (let i = 0; i <= 100; i += 2) {
-            const a = -135 + (i * 2.7);
-            const isMajor = i % 10 === 0;
-            const len = isMajor ? 6 : 3;
-            ticks += `<line x1="50" y1="12" x2="50" y2="${12 + len}" stroke="${isMajor ? '#CCC' : '#666'}" stroke-width="${isMajor ? 2 : 1}" transform="rotate(${a} 50 50)" />`;
-        }
-        return `
-        <svg viewBox="0 0 100 100" style="width:100%; height:100%;">
-            <circle cx="50" cy="50" r="42" fill="#3A3A3C" stroke="#222" stroke-width="2"/>
-            <circle cx="50" cy="50" r="38" fill="#F4F4F5"/>
-            ${ticks}
-            <g fill="#111" font-size="5" text-anchor="middle" font-weight="bold">
-                <text x="50" y="27" transform="rotate(-90 50 50)">950</text>
-                <text x="50" y="27" transform="rotate(-40 50 50)">982</text>
-                <text x="50" y="27" transform="rotate(10 50 50)">1013</text>
-                <text x="50" y="27" transform="rotate(60 50 50)">1040</text>
-            </g>
-            <g transform="translate(50, 50) rotate(${angle})">
-                <line x1="0" y1="0" x2="0" y2="-28" stroke="#EF4444" stroke-width="2.5" stroke-linecap="round"/>
-                <circle cx="0" cy="0" r="4.5" fill="#EF4444"/>
-                <circle cx="0" cy="-20" r="2" fill="#FFF"/>
-            </g>
-            <circle cx="50" cy="50" r="1.5" fill="#000"/>
-        </svg>
-        `;
-    }
-
-    function getWindDirectionText(degree) {
-        if (degree === -99 || isNaN(degree)) return '無風';
-        const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
-        const index = Math.floor((degree + 11.25) / 22.5) % 16;
-        return directions[index];
-    }
-
-    function calculateApparentTemp(t, rh, v) {
-        if (t === -99 || rh === -99 || v === -99 || isNaN(t) || isNaN(rh) || isNaN(v)) return null;
-        const e = (rh / 100) * 6.105 * Math.exp((17.27 * t) / (237.7 + t));
-        const at = 1.04 * t + 0.2 * e - 0.65 * v - 2.7;
-        return Math.round(at * 10) / 10;
-    }
-
-    function getFaceEmoji(appTemp) {
-        if (appTemp === null) return '🤔'; 
-        if (appTemp < 15) return '🥶';      
-        if (appTemp < 20) return '😬';      
-        if (appTemp < 26) return '😊';      
-        if (appTemp < 31) return '😅';      
-        return '🥵';                        
-    }
-
-    async function fetchWeather() {
-        try {
-            // 使用帶有時間戳的 URL，避免抓到舊的快取資料
-            const response = await fetch(getFetchUrl());
-            if (!response.ok) throw new Error('網路請求失敗');
-            
-            const text = await response.text();
-            const parts = text.split(',');
-
-            if (parts.length < 18) {
-                throw new Error('找不到測站資料或格式錯誤');
-            }
-
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('error-msg').style.display = 'none';
-            
-            const dashboard = document.getElementById('dashboard');
-            dashboard.style.display = 'grid';
-
-            // 解析時間欄位 (例如: 202603311453)
-            const dateStr = parts[3];
-            const hour = dateStr.substring(8, 10);
-            const min = dateStr.substring(10, 12);
-            document.getElementById('update-time-text').innerText = `觀測時間: ${hour}:${min} (自動更新中)`;
-
-            const pres = parseFloat(parts[4]);   // 氣壓
-            const t = parseFloat(parts[5]);      // 溫度
-            const rh = parseFloat(parts[6]);     // 濕度
-            const ws = parseFloat(parts[9]);     // 風速
-            const wd = parseFloat(parts[10]);    // 風向
-            const rain = parseFloat(parts[16]);  // 降雨量
-
-            const appTemp = calculateApparentTemp(t, rh, ws);
-            const emojiFace = getFaceEmoji(appTemp);
-            
-            const reversedWindDir = (wd !== -99 && !isNaN(wd)) ? (wd + 180) % 360 : -99;
-
-            dashboard.innerHTML = `
-                <div class="card">
-                    <div class="card-title">目前溫度</div>
-                    <div class="widget-container">${buildSVGTempGauge(t)}</div>
-                    <div>
-                        <span class="main-value">${isNaN(t) || t === -99 ? '--' : t.toFixed(1)}</span><span class="unit">°C</span>
-                        <div class="sub-value">TEMPERATURE</div>
-                    </div>
-                </div>
-                
-                <div class="card">
-                    <div class="card-title">體感舒適度</div>
-                    <div class="widget-container">
-                        <div class="emoji-face">${emojiFace}</div>
-                    </div>
-                    <div>
-                        <span class="main-value">${appTemp === null ? '--' : appTemp.toFixed(1)}</span><span class="unit">°C</span>
-                        <div class="sub-value">FEELS LIKE</div>
-                    </div>
-                </div>
-                
-                <div class="card">
-                    <div class="card-title">相對濕度</div>
-                    <div class="widget-container">${buildSVGHumidity(rh)}</div>
-                    <div>
-                        <span class="main-value">${isNaN(rh) || rh === -99 ? '--' : Math.round(rh)}</span><span class="unit">%</span>
-                        <div class="sub-value">HUMIDITY</div>
-                    </div>
-                </div>
-                
-                <div class="card">
-                    <div class="card-title">風向風速</div>
-                    <div class="widget-container">${buildSVGWind(reversedWindDir, ws)}</div>
-                    <div>
-                        <span class="main-value">${isNaN(ws) || ws === -99 ? '--' : ws.toFixed(1)}</span><span class="unit">m/s</span>
-                        <div class="sub-value-2">${isNaN(wd) || wd === -99 ? '--' : wd}° ${getWindDirectionText(wd)}</div>
-                        <div class="sub-value">WIND</div>
-                    </div>
-                </div>
-                
-                <div class="card">
-                    <div class="card-title">日降雨量</div>
-                    <div class="widget-container">${buildSVGPrecip(rain)}</div>
-                    <div>
-                        <span class="main-value">${isNaN(rain) || rain < 0 ? '0.0' : rain.toFixed(1)}</span><span class="unit">mm</span>
-                        <div class="sub-value">PRECIPITATION</div>
-                    </div>
-                </div>
-                
-                <div class="card">
-                    <div class="card-title">大氣壓力</div>
-                    <div class="widget-container">${buildSVGPressure(pres)}</div>
-                    <div>
-                        <span class="main-value">${isNaN(pres) || pres === -99 ? '--' : Math.round(pres)}</span><span class="unit">hPa</span>
-                        <div class="sub-value">PRESSURE</div>
-                    </div>
-                </div>
-            `;
-
-        } catch (error) {
-            // 如果某次更新失敗，不會讓整個畫面消失，只會在控制台報錯
-            console.error('資料更新錯誤:', error);
-        }
-    }
-
-    // --- 啟動機制 ---
-    
-    // 1. 網頁剛載入時，先立刻抓取一次資料
-    fetchWeather();
-
-    // 2. 設定計時器：每 300,000 毫秒 (5分鐘) 執行一次 fetchWeather 函數
-    setInterval(fetchWeather, 300000);
-
-</script>
-
-</body>
-</html>
+            <path d="M 30 25 L 30 75 A 20 6 0 0 0 70 75 L 70 25" fill="none" stroke="#6
