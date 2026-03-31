@@ -196,10 +196,10 @@
     const fileId = '12R1lPqj7IrjRgDz-NXtW9Uq15ptRzLyN';
     const driveUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
     
-    // 改用更穩定的 corsproxy.io，並加入時間戳記防快取
+    // 改用 CodeTabs 代理伺服器，並保留時間戳記防快取
     function getFetchUrl() {
         const urlWithTime = `${driveUrl}&t=${new Date().getTime()}`;
-        return `https://corsproxy.io/?${encodeURIComponent(urlWithTime)}`;
+        return `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(urlWithTime)}`;
     }
 
     function buildSVGTempGauge(temp) {
