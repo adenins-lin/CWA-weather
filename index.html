@@ -194,8 +194,9 @@
     // ------------------------------------------------------------------
     // 設定資料來源 (Google Drive 檔案 ID)
     // ------------------------------------------------------------------
-    const fileId = '12R1lPqj7IrjRgDz-NXtW9Uq15ptRzLyN';
-    const driveUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+    function getFetchUrl() {
+        const urlWithTime = `${driveUrl}&t=${new Date().getTime()}`;
+        return `https://corsproxy.io/?${encodeURIComponent(urlWithTime)}`;
     
     // 使用 CORS 代理來解決前端直連 Google Drive 的跨域問題
     // 如果加上了快取破壞參數 (Cache Buster)，能確保每 60 秒都抓到最新的檔案
@@ -460,8 +461,8 @@
     // 1. 網頁剛載入時，先立刻抓取一次資料
     fetchWeather();
 
-    // 2. 設定計時器：每 60,000 毫秒 (60秒) 執行一次 fetchWeather 函數
-    setInterval(fetchWeather, 60000);
+    // 2. 設定計時器：每 300,000 毫秒 (5分鐘) 執行一次 fetchWeather 函數
+    setInterval(fetchWeather, 300000);
 
 </script>
 
