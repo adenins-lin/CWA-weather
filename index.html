@@ -51,6 +51,23 @@
         font-weight: 700;
         color: #fff;
         margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    /* 加入一個會呼吸的 LIVE 小紅點，讓儀表板更有即時感 */
+    .live-dot {
+        width: 10px;
+        height: 10px;
+        background-color: #EF4444;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+        70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
     }
 
     #update-time-text {
@@ -159,7 +176,10 @@
 
 <div id="app-container">
     <div id="main-header">
-        <h2 class="header-title">白沙屯 自動氣象站</h2>
+        <h2 class="header-title">
+            <div class="live-dot"></div>
+            白沙屯 自動氣象站
+        </h2>
         <div id="update-time-text">等待資料載入中...</div>
     </div>
 
@@ -178,12 +198,13 @@
     const driveUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
     
     // 使用 CORS 代理來解決前端直連 Google Drive 的跨域問題
-    const url = `https://api.allorigins.win/raw?url=${encodeURIComponent(driveUrl)}`;
+    // 如果加上了快取破壞參數 (Cache Buster)，能確保每 60 秒都抓到最新的檔案
+    function getFetchUrl() {
+        return `https://api.allorigins.win/raw?url=${encodeURIComponent(driveUrl)}&t=${new Date().getTime()}`;
+    }
     
-    // 未來如果在 Render 上，檔案(baishatun_newly.txt)是放在網頁同目錄下，
-    // 請將上面的 const url 取代為下面這行：
-    // const url = 'baishatun_newly.txt';
-
+    // 未來如果在 Render 上，檔案(baishatun_newly.txt)是放在網頁同目錄下，請將上面的函數改為：
+    // function getFetchUrl() { return `baishatun_newly.txt?t=${new Date().getTime()}`; }
 
     function buildSVGTempGauge(temp) {
         if (temp === -99 || isNaN(temp)) return '';
@@ -334,10 +355,10 @@
 
     async function fetchWeather() {
         try {
-            const response = await fetch(url);
+            // 使用帶有時間戳的 URL，避免抓到舊的快取資料
+            const response = await fetch(getFetchUrl());
             if (!response.ok) throw new Error('網路請求失敗');
             
-            // 將檔案內容作為純文字讀取 (CSV 格式)
             const text = await response.text();
             const parts = text.split(',');
 
@@ -346,6 +367,8 @@
             }
 
             document.getElementById('loading').style.display = 'none';
+            document.getElementById('error-msg').style.display = 'none';
+            
             const dashboard = document.getElementById('dashboard');
             dashboard.style.display = 'grid';
 
@@ -353,9 +376,8 @@
             const dateStr = parts[3];
             const hour = dateStr.substring(8, 10);
             const min = dateStr.substring(10, 12);
-            document.getElementById('update-time-text').innerText = `觀測時間: ${hour}:${min}`;
+            document.getElementById('update-time-text').innerText = `觀測時間: ${hour}:${min} (自動更新中)`;
 
-            // 依據檔案格式對應解析資料
             const pres = parseFloat(parts[4]);   // 氣壓
             const t = parseFloat(parts[5]);      // 溫度
             const rh = parseFloat(parts[6]);     // 濕度
@@ -366,7 +388,6 @@
             const appTemp = calculateApparentTemp(t, rh, ws);
             const emojiFace = getFaceEmoji(appTemp);
             
-            // 計算風向羅盤角度 (保持翻轉 180 度的設計)
             const reversedWindDir = (wd !== -99 && !isNaN(wd)) ? (wd + 180) % 360 : -99;
 
             dashboard.innerHTML = `
@@ -429,13 +450,19 @@
             `;
 
         } catch (error) {
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('error-msg').style.display = 'block';
-            console.error('資料載入錯誤:', error);
+            // 如果某次更新失敗，不會讓整個畫面消失，只會在控制台報錯
+            console.error('資料更新錯誤:', error);
         }
     }
 
+    // --- 啟動機制 ---
+    
+    // 1. 網頁剛載入時，先立刻抓取一次資料
     fetchWeather();
+
+    // 2. 設定計時器：每 60,000 毫秒 (60秒) 執行一次 fetchWeather 函數
+    setInterval(fetchWeather, 60000);
+
 </script>
 
 </body>
