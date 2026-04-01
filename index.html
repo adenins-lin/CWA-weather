@@ -30,8 +30,12 @@
 
     #app-container {
         width: 100%;
-        max-width: 1000px;
-        background: #111111; 
+        max-width: 1000px; /* 為了容納橫幅地圖，將容器稍微拉寬 */
+        
+        /* 【彩蛋】如果你想加入進香背景圖片，可以把下方這行註解解開，並換上你的圖片網址 */
+        /* background: linear-gradient(rgba(17, 17, 17, 0.85), rgba(17, 17, 17, 0.95)), url('你的圖片網址.jpg') center/cover; */
+        background-color: #111111; 
+        
         border-radius: 15px;
         padding: 20px;
         box-shadow: 0 10px 30px rgba(0,0,0,0.8);
@@ -75,10 +79,11 @@
         font-weight: 500;
     }
 
+    /* 重新設計的 3 欄式網格 */
     .dashboard {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 15px;
+        grid-template-columns: repeat(3, 1fr); /* 上排顯示 3 張卡片 */
+        gap: 20px;
         width: 100%;
     }
 
@@ -86,7 +91,7 @@
         background-color: var(--card-bg);
         border-radius: 12px;
         border: 1px solid rgba(255, 255, 255, 0.1);
-        padding: 22px;
+        padding: 25px 22px;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -98,6 +103,11 @@
 
     .card:hover {
         transform: translateY(-3px);
+    }
+
+    /* 設定地圖卡片橫跨所有欄位 */
+    .card-full-width {
+        grid-column: 1 / -1; 
     }
 
     .card-title {
@@ -121,10 +131,27 @@
         align-items: center;
     }
 
+    /* 將地圖容器大幅拉高拉寬，變成全景橫幅 */
+    .map-container {
+        width: 100%;
+        height: 250px; /* 拉長地圖的高度 */
+        margin-bottom: 15px;
+        border-radius: 10px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
     .main-value {
         font-size: 42px;
         font-weight: 800;
         line-height: 1;
+        color: #FFFFFF;
+        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    }
+    
+    .location-value {
+        font-size: 26px; 
+        font-weight: 700;
         color: #FFFFFF;
         text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
     }
@@ -138,7 +165,7 @@
     }
 
     .sub-value {
-        font-size: 13px;
+        font-size: 14px;
         color: #BBB;
         text-transform: uppercase;
         margin-top: 10px;
@@ -162,12 +189,18 @@
     #loading, #error-msg { text-align: center; padding: 20px; font-size: 15px; width: 100%; grid-column: 1 / -1; }
     #error-msg { color: #EF4444; display: none; }
 
+    /* 平板響應式設定 */
     @media (max-width: 768px) {
         .dashboard { grid-template-columns: repeat(2, 1fr); }
+        /* 在平板上，讓濕度卡片也佔滿全寬，保持視覺平衡 */
+        .card-humidity { grid-column: 1 / -1; }
     }
-    @media (max-width: 480px) {
+    
+    /* 手機響應式設定 */
+    @media (max-width: 550px) {
         .dashboard { grid-template-columns: 1fr; }
-        .main-value { font-size: 36px; }
+        .card-humidity { grid-column: auto; }
+        .map-container { height: 200px; } /* 手機版地圖稍微縮小一點 */
     }
 </style>
 </head>
@@ -177,7 +210,7 @@
     <div id="main-header">
         <h2 class="header-title">
             <div class="live-dot"></div>
-            白沙屯馬祖 移動氣象站（測試中）
+            白沙屯媽祖 移動氣象站（測試中）
         </h2>
         <div id="update-time-text">等待資料載入中...</div>
     </div>
@@ -196,11 +229,12 @@
     const fileId = '12R1lPqj7IrjRgDz-NXtW9Uq15ptRzLyN';
     const driveUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
     
-    // 改用 CodeTabs 代理伺服器，並保留時間戳記防快取
     function getFetchUrl() {
         const urlWithTime = `${driveUrl}&t=${new Date().getTime()}`;
         return `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(urlWithTime)}`;
     }
+
+    // --- SVG 繪製區塊 ---
 
     function buildSVGTempGauge(temp) {
         if (temp === -99 || isNaN(temp)) return '';
@@ -249,85 +283,45 @@
         `;
     }
 
-    function buildSVGWind(dir, speed) {
-        if (dir === -99 || isNaN(dir)) return '';
-        let ticks = '';
-        for (let i = 0; i < 360; i += 5) {
-            const isMajor = i % 90 === 0;
-            const len = isMajor ? 5 : 2;
-            ticks += `<line x1="50" y1="8" x2="50" y2="${8 + len}" stroke="${isMajor ? '#FFF' : '#666'}" stroke-width="${isMajor ? 2 : 1}" transform="rotate(${i} 50 50)" />`;
-        }
-        
-        const speedText = (speed !== -99 && !isNaN(speed)) ? speed.toFixed(1) : '--';
-        
-        return `
-        <svg viewBox="0 0 100 100" style="width:100%; height:100%;">
-            ${ticks}
-            <text x="50" y="22" fill="#FFF" font-size="9" font-weight="bold" text-anchor="middle">北</text>
-            <text x="50" y="85" fill="#FFF" font-size="9" font-weight="bold" text-anchor="middle">南</text>
-            <text x="21" y="53" fill="#FFF" font-size="9" font-weight="bold" text-anchor="middle">西</text>
-            <text x="79" y="53" fill="#FFF" font-size="9" font-weight="bold" text-anchor="middle">東</text>
-            
-            <text x="50" y="41" fill="#A1A1AA" font-size="7" font-weight="bold" text-anchor="middle">風速</text>
-            <text x="50" y="55" fill="#00E5FF" font-size="15" font-weight="bold" text-anchor="middle">${speedText}</text>
-            <text x="50" y="63" fill="#A1A1AA" font-size="6" text-anchor="middle">m/s</text>
+    // --- 資料處理區塊 ---
 
-            <g transform="translate(50,50) rotate(${dir})">
-                <polygon points="-5,-30 5,-30 0,-42" fill="#00E5FF" />
-            </g>
-        </svg>
-        `;
-    }
-
-    function buildSVGPressure(press) {
-        if (press === -99 || isNaN(press)) return '';
-        const minP = 950; const maxP = 1050;
-        let percent = (press - minP) / (maxP - minP);
-        if (percent < 0) percent = 0; if (percent > 1) percent = 1;
-        const angle = -135 + (percent * 270);
-        let ticks = '';
-        for (let i = 0; i <= 100; i += 2) {
-            const a = -135 + (i * 2.7);
-            const isMajor = i % 10 === 0;
-            const len = isMajor ? 6 : 3;
-            ticks += `<line x1="50" y1="12" x2="50" y2="${12 + len}" stroke="${isMajor ? '#CCC' : '#666'}" stroke-width="${isMajor ? 2 : 1}" transform="rotate(${a} 50 50)" />`;
-        }
-        return `
-        <svg viewBox="0 0 100 100" style="width:100%; height:100%;">
-            <circle cx="50" cy="50" r="42" fill="#3A3A3C" stroke="#222" stroke-width="2"/>
-            <circle cx="50" cy="50" r="38" fill="#F4F4F5"/>
-            ${ticks}
-            <g fill="#111" font-size="5" text-anchor="middle" font-weight="bold">
-                <text x="50" y="27" transform="rotate(-90 50 50)">950</text>
-                <text x="50" y="27" transform="rotate(-40 50 50)">982</text>
-                <text x="50" y="27" transform="rotate(10 50 50)">1013</text>
-                <text x="50" y="27" transform="rotate(60 50 50)">1040</text>
-            </g>
-            <g transform="translate(50, 50) rotate(${angle})">
-                <line x1="0" y1="0" x2="0" y2="-28" stroke="#EF4444" stroke-width="2.5" stroke-linecap="round"/>
-                <circle cx="0" cy="0" r="4.5" fill="#EF4444"/>
-                <circle cx="0" cy="-20" r="2" fill="#FFF"/>
-            </g>
-            <circle cx="50" cy="50" r="1.5" fill="#000"/>
-        </svg>
-        `;
-    }
-
-    function getWindDirectionText(degree) {
-        if (degree === -99 || isNaN(degree)) return '無風';
-        const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
-        const index = Math.floor((degree + 11.25) / 22.5) % 16;
-        return directions[index];
-    }
-
-    // 根據國民健康署 HPA 標準分類酷熱指數
     function getHeatIndexInfo(hi) {
         if (hi === -99 || isNaN(hi)) return { text: '--', emoji: '🤔', color: '#FFFFFF' };
-        if (hi < 26) return { text: '安全', emoji: '😊', color: '#2ecc71' };       // 綠色
-        if (hi < 32) return { text: '注意', emoji: '😅', color: '#f1c40f' };       // 黃色
-        if (hi < 41) return { text: '極度注意', emoji: '🥵', color: '#e67e22' };   // 橘色
-        if (hi < 54) return { text: '危險', emoji: '😱', color: '#e74c3c' };       // 紅色
-        return { text: '極度危險', emoji: '💀', color: '#9b59b6' };                // 紫色
+        if (hi < 26) return { text: '安全', emoji: '😊', color: '#2ecc71' };       
+        if (hi < 32) return { text: '注意', emoji: '😅', color: '#f1c40f' };       
+        if (hi < 41) return { text: '極度注意', emoji: '🥵', color: '#e67e22' };   
+        if (hi < 54) return { text: '危險', emoji: '😱', color: '#e74c3c' };       
+        return { text: '極度危險', emoji: '💀', color: '#9b59b6' };                
+    }
+
+    let lastLat = null;
+    let lastLon = null;
+    let cachedLocationName = '定位中...';
+
+    async function getCityDistrict(lat, lon) {
+        if (lat === -99 || lon === -99 || isNaN(lat) || isNaN(lon)) return '無法取得定位';
+        if (lat === lastLat && lon === lastLon) return cachedLocationName;
+
+        try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&accept-language=zh-TW`);
+            const data = await res.json();
+            
+            if (data && data.address) {
+                const city = data.address.city || data.address.county || data.address.state || '';
+                const district = data.address.town || data.address.suburb || data.address.village || data.address.borough || '';
+                cachedLocationName = `${city}${district}`.replace('台灣', ''); 
+                if (cachedLocationName === '') cachedLocationName = '未知地點';
+            } else {
+                cachedLocationName = '無法解析地址';
+            }
+        } catch (e) {
+            console.error('地理編碼失敗:', e);
+            cachedLocationName = '地址解析失敗';
+        }
+        
+        lastLat = lat;
+        lastLon = lon;
+        return cachedLocationName;
     }
 
     async function fetchWeather() {
@@ -342,38 +336,33 @@
                 throw new Error('找不到測站資料或格式錯誤');
             }
 
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('error-msg').style.display = 'none';
-            
-            const dashboard = document.getElementById('dashboard');
-            dashboard.style.display = 'grid';
-
-            // 1. 解析時間欄位
             const dateStr = parts[3];
             const hour = dateStr.substring(8, 10);
             const min = dateStr.substring(10, 12);
             document.getElementById('update-time-text').innerText = `觀測時間: ${hour}:${min} (自動更新中)`;
 
-            // 2. 對應移動氣象站的檔案參數
-            const pres = parseFloat(parts[4]);   
             const t = parseFloat(parts[5]);      
             const rh = parseFloat(parts[6]);     
-            const ws = parseFloat(parts[9]);     
-            const wd = parseFloat(parts[10]);    
-            const hi = parseFloat(parts[13]);    // 酷熱指數 (第14項)
-            const lat = parseFloat(parts[17]);   // 緯度 (第18項)
-            const lon = parseFloat(parts[18]);   // 經度 (第19項)
+            const hi = parseFloat(parts[13]);    
+            const lat = parseFloat(parts[17]);   
+            const lon = parseFloat(parts[18]);   
 
             const hiInfo = getHeatIndexInfo(hi);
-            const reversedWindDir = (wd !== -99 && !isNaN(wd)) ? (wd + 180) % 360 : -99;
-            
-            // 地圖 Iframe HTML 生成
+            const locationName = await getCityDistrict(lat, lon);
+
+            // 【已修復】使用最標準且穩定的 Google Maps 嵌入語法
             let mapHtml = '';
             if (!isNaN(lat) && !isNaN(lon) && lat !== -99 && lon !== -99) {
                 mapHtml = `<iframe width="100%" height="100%" frameborder="0" style="border:0;" src="https://maps.google.com/maps?q=${lat},${lon}&hl=zh-TW&z=15&output=embed" allowfullscreen></iframe>`;
             } else {
-                mapHtml = `<div style="display:flex; align-items:center; justify-content:center; width:100%; height:100%; font-size:12px; color:#aaa;">無法定位</div>`;
+                mapHtml = `<div style="display:flex; align-items:center; justify-content:center; width:100%; height:100%; font-size:12px; color:#aaa;">無法定位地圖</div>`;
             }
+
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('error-msg').style.display = 'none';
+            
+            const dashboard = document.getElementById('dashboard');
+            dashboard.style.display = 'grid';
 
             dashboard.innerHTML = `
                 <div class="card">
@@ -397,7 +386,7 @@
                     </div>
                 </div>
                 
-                <div class="card">
+                <div class="card card-humidity">
                     <div class="card-title">相對濕度</div>
                     <div class="widget-container">${buildSVGHumidity(rh)}</div>
                     <div>
@@ -406,36 +395,14 @@
                     </div>
                 </div>
                 
-                <div class="card">
-                    <div class="card-title">風向風速</div>
-                    <div class="widget-container">${buildSVGWind(reversedWindDir, ws)}</div>
-                    <div>
-                        <span class="main-value">${isNaN(ws) || ws === -99 ? '--' : ws.toFixed(1)}</span><span class="unit">m/s</span>
-                        <div class="sub-value-2">${isNaN(wd) || wd === -99 ? '--' : wd}° ${getWindDirectionText(wd)}</div>
-                        <div class="sub-value">WIND</div>
-                    </div>
-                </div>
-                
-                <div class="card">
-                    <div class="card-title">氣象站位置</div>
-                    <div class="widget-container" style="border-radius: 10px; overflow: hidden; border: 1px solid rgba(255,255,255,0.2);">
+                <div class="card card-full-width">
+                    <div class="card-title">氣象站即時定位</div>
+                    <div class="map-container">
                         ${mapHtml}
                     </div>
                     <div>
-                        <span class="main-value" style="font-size: 16px; letter-spacing: 1px;">
-                            ${isNaN(lat) || lat === -99 ? '--' : lat.toFixed(4)}<br>
-                            ${isNaN(lon) || lon === -99 ? '--' : lon.toFixed(4)}
-                        </span>
-                        <div class="sub-value" style="margin-top: 8px;">GPS LOCATION</div>
-                    </div>
-                </div>
-                
-                <div class="card">
-                    <div class="card-title">大氣壓力</div>
-                    <div class="widget-container">${buildSVGPressure(pres)}</div>
-                    <div>
-                        <span class="main-value">${isNaN(pres) || pres === -99 ? '--' : Math.round(pres)}</span><span class="unit">hPa</span>
-                        <div class="sub-value">PRESSURE</div>
+                        <span class="location-value">${locationName}</span>
+                        <div class="sub-value">CURRENT LOCATION</div>
                     </div>
                 </div>
             `;
