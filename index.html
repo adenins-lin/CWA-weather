@@ -177,7 +177,7 @@
     <div id="main-header">
         <h2 class="header-title">
             <div class="live-dot"></div>
-            白沙屯媽祖 移動氣象站（測試中）
+            白沙屯馬祖 移動氣象站
         </h2>
         <div id="update-time-text">等待資料載入中...</div>
     </div>
@@ -279,19 +279,6 @@
         `;
     }
 
-    function buildSVGPrecip(precip) {
-        if (precip === -99 || isNaN(precip) || precip < 0) precip = 0;
-        let percent = precip / 50; if (percent > 1) percent = 1;
-        const h = 50 * percent;
-        return `
-        <svg viewBox="0 0 100 100" style="width:100%; height:100%; filter: drop-shadow(0 0 5px rgba(0,0,0,0.3));">
-            <ellipse cx="50" cy="25" rx="20" ry="6" fill="none" stroke="#666" stroke-width="2"/>
-            <path d="M 30 25 L 30 75 A 20 6 0 0 0 70 75 L 70 25" fill="none" stroke="#666" stroke-width="2"/>
-            ${h > 0 ? `<path d="M 30 ${75 - h} L 30 75 A 20 6 0 0 0 70 75 L 70 ${75 - h} A 20 6 0 0 1 30 ${75 - h}" fill="#38BDF8" opacity="0.6"/>` : ''}
-        </svg>
-        `;
-    }
-
     function buildSVGPressure(press) {
         if (press === -99 || isNaN(press)) return '';
         const minP = 950; const maxP = 1050;
@@ -333,20 +320,14 @@
         return directions[index];
     }
 
-    function calculateApparentTemp(t, rh, v) {
-        if (t === -99 || rh === -99 || v === -99 || isNaN(t) || isNaN(rh) || isNaN(v)) return null;
-        const e = (rh / 100) * 6.105 * Math.exp((17.27 * t) / (237.7 + t));
-        const at = 1.04 * t + 0.2 * e - 0.65 * v - 2.7;
-        return Math.round(at * 10) / 10;
-    }
-
-    function getFaceEmoji(appTemp) {
-        if (appTemp === null) return '🤔'; 
-        if (appTemp < 15) return '🥶';      
-        if (appTemp < 20) return '😬';      
-        if (appTemp < 26) return '😊';      
-        if (appTemp < 31) return '😅';      
-        return '🥵';                        
+    // 根據國民健康署 HPA 標準分類酷熱指數
+    function getHeatIndexInfo(hi) {
+        if (hi === -99 || isNaN(hi)) return { text: '--', emoji: '🤔', color: '#FFFFFF' };
+        if (hi < 26) return { text: '安全', emoji: '😊', color: '#2ecc71' };       // 綠色
+        if (hi < 32) return { text: '注意', emoji: '😅', color: '#f1c40f' };       // 黃色
+        if (hi < 41) return { text: '極度注意', emoji: '🥵', color: '#e67e22' };   // 橘色
+        if (hi < 54) return { text: '危險', emoji: '😱', color: '#e74c3c' };       // 紅色
+        return { text: '極度危險', emoji: '💀', color: '#9b59b6' };                // 紫色
     }
 
     async function fetchWeather() {
@@ -357,7 +338,7 @@
             const text = await response.text();
             const parts = text.split(',');
 
-            if (parts.length < 18) {
+            if (parts.length < 19) {
                 throw new Error('找不到測站資料或格式錯誤');
             }
 
@@ -367,22 +348,32 @@
             const dashboard = document.getElementById('dashboard');
             dashboard.style.display = 'grid';
 
+            // 1. 解析時間欄位
             const dateStr = parts[3];
             const hour = dateStr.substring(8, 10);
             const min = dateStr.substring(10, 12);
             document.getElementById('update-time-text').innerText = `觀測時間: ${hour}:${min} (自動更新中)`;
 
+            // 2. 對應移動氣象站的檔案參數
             const pres = parseFloat(parts[4]);   
             const t = parseFloat(parts[5]);      
             const rh = parseFloat(parts[6]);     
             const ws = parseFloat(parts[9]);     
             const wd = parseFloat(parts[10]);    
-            const rain = parseFloat(parts[16]);  
+            const hi = parseFloat(parts[13]);    // 酷熱指數 (第14項)
+            const lat = parseFloat(parts[17]);   // 緯度 (第18項)
+            const lon = parseFloat(parts[18]);   // 經度 (第19項)
 
-            const appTemp = calculateApparentTemp(t, rh, ws);
-            const emojiFace = getFaceEmoji(appTemp);
-            
+            const hiInfo = getHeatIndexInfo(hi);
             const reversedWindDir = (wd !== -99 && !isNaN(wd)) ? (wd + 180) % 360 : -99;
+            
+            // 地圖 Iframe HTML 生成
+            let mapHtml = '';
+            if (!isNaN(lat) && !isNaN(lon) && lat !== -99 && lon !== -99) {
+                mapHtml = `<iframe width="100%" height="100%" frameborder="0" style="border:0;" src="https://maps.google.com/maps?q=${lat},${lon}&hl=zh-TW&z=15&output=embed" allowfullscreen></iframe>`;
+            } else {
+                mapHtml = `<div style="display:flex; align-items:center; justify-content:center; width:100%; height:100%; font-size:12px; color:#aaa;">無法定位</div>`;
+            }
 
             dashboard.innerHTML = `
                 <div class="card">
@@ -395,13 +386,14 @@
                 </div>
                 
                 <div class="card">
-                    <div class="card-title">體感舒適度</div>
+                    <div class="card-title">酷熱指數</div>
                     <div class="widget-container">
-                        <div class="emoji-face">${emojiFace}</div>
+                        <div class="emoji-face">${hiInfo.emoji}</div>
                     </div>
                     <div>
-                        <span class="main-value">${appTemp === null ? '--' : appTemp.toFixed(1)}</span><span class="unit">°C</span>
-                        <div class="sub-value">FEELS LIKE</div>
+                        <span class="main-value" style="color: ${hiInfo.color};">${isNaN(hi) || hi === -99 ? '--' : hi.toFixed(1)}</span><span class="unit" style="color: ${hiInfo.color};">°C</span>
+                        <div class="sub-value" style="color: ${hiInfo.color}; font-size: 14px; font-weight: bold;">${hiInfo.text}</div>
+                        <div class="sub-value-2">HEAT INDEX</div>
                     </div>
                 </div>
                 
@@ -425,11 +417,16 @@
                 </div>
                 
                 <div class="card">
-                    <div class="card-title">日降雨量</div>
-                    <div class="widget-container">${buildSVGPrecip(rain)}</div>
+                    <div class="card-title">氣象站位置</div>
+                    <div class="widget-container" style="border-radius: 10px; overflow: hidden; border: 1px solid rgba(255,255,255,0.2);">
+                        ${mapHtml}
+                    </div>
                     <div>
-                        <span class="main-value">${isNaN(rain) || rain < 0 ? '0.0' : rain.toFixed(1)}</span><span class="unit">mm</span>
-                        <div class="sub-value">PRECIPITATION</div>
+                        <span class="main-value" style="font-size: 16px; letter-spacing: 1px;">
+                            ${isNaN(lat) || lat === -99 ? '--' : lat.toFixed(4)}<br>
+                            ${isNaN(lon) || lon === -99 ? '--' : lon.toFixed(4)}
+                        </span>
+                        <div class="sub-value" style="margin-top: 8px;">GPS LOCATION</div>
                     </div>
                 </div>
                 
